@@ -39,7 +39,10 @@ def solve_image(file: Path) -> bool:
     cmd = [solve_exe, str(file)] + OPTS
     print(cmd)
 
-    subprocess.check_call(cmd)
+    ret = subprocess.run(cmd)
+    if ret.returncode != 0:
+        logging.error(f"{file}  solve-field failed")
+        return False
 
     solved_file = file.with_suffix(".solved")
     return solved_file.is_file()
