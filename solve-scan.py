@@ -6,7 +6,6 @@ By "process" we mean either solve an images plate scale,
 or determine that it is not solvable with this technique.
 """
 
-from __future__ import annotations
 from pathlib import Path
 import subprocess
 import shutil
@@ -14,12 +13,15 @@ import logging
 import argparse
 import functools
 import itertools
+import tempfile
 
 import imageio.v3 as iio
 
 from matplotlib.pyplot import figure, draw, pause
 import matplotlib.patches as patches
 import matplotlib.colors as mplcolors
+
+OPTS = ["--downsample", "4", "--scale-low", "10", "--verbose"]
 
 
 @functools.cache
@@ -31,13 +33,16 @@ def get_solve_exe() -> str:
     return solve_exe
 
 
-def solve_image(file: Path) -> None:
+def solve_image(file: Path) -> bool:
     solve_exe = get_solve_exe()
 
-    cmd = [solve_exe, "--overwrite", str(file)]
+    cmd = [solve_exe, str(file)] + OPTS
     print(cmd)
 
     subprocess.check_call(cmd)
+
+    solved_file = file.with_suffix(".solved")
+    return solved_file.is_file()
 
 
 def subimage_dims(x: int, y: int) -> tuple[int, int]:
@@ -108,7 +113,7 @@ def subimage_centers(
     return centers
 
 
-def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int):
+def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int) -> None:
     img = iio.imread(file)
     y, x = img.shape[:2]
     print(f"Processing {file} {x}x{y} pixels")
@@ -119,7 +124,23 @@ def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int):
 
     plot_subimage_box(img, centers, sx, sy)
 
-    # solve_image(file)
+    for center in centers:
+        subimg = img[
+            center[1] - sy // 2 : center[1] + sy // 2,
+            center[0] - sx // 2 : center[0] + sx // 2,
+        ]
+
+        with tempfile.TemporaryDirectory() as f:
+            subimage_file = Path(f) / file.name
+            iio.imwrite(subimage_file, subimg)
+
+            if solve_image(subimage_file):
+                new_dir = file.parent / f"{file.stem}-{center[0]}x{center[1]}/"
+                print(f"{file}  Solved subimage center {center} copy to {new_dir}")
+                shutil.copytree(f, new_dir)
+                return
+
+    logging.error(f"{file}  Failed to solve subimages")
 
 
 def plot_subimage_box(img, centers: list[tuple[int, int]], sx: int, sy: int) -> None:
