@@ -130,7 +130,7 @@ def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int) ->
             center[0] - sx // 2 : center[0] + sx // 2,
         ]
 
-        with tempfile.TemporaryDirectory() as f:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as f:
             subimage_file = Path(f) / file.name
             iio.imwrite(subimage_file, subimg)
 
