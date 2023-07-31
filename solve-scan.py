@@ -37,7 +37,7 @@ def solve_image(file: Path) -> bool:
     solve_exe = get_solve_exe()
 
     cmd = [solve_exe, str(file)] + OPTS
-    print(cmd)
+    print(" ".join(cmd))
 
     ret = subprocess.run(cmd)
     if ret.returncode != 0:
