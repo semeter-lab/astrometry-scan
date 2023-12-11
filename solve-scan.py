@@ -11,7 +11,6 @@ import subprocess
 import shutil
 import logging
 import argparse
-import functools
 import itertools
 import tempfile
 
@@ -21,31 +20,14 @@ from matplotlib.pyplot import figure, draw, pause
 import matplotlib.patches as patches
 import matplotlib.colors as mplcolors
 
+import astrometry_azel as ael
+
 OPTS = ["--downsample", "4", "--scale-low", "10", "--verbose"]
-
-
-@functools.cache
-def get_solve_exe() -> str:
-    solve_exe = shutil.which("solve-field")
-    if not solve_exe:
-        raise RuntimeError("Astrometry.net solve-field not found")
-
-    return solve_exe
-
-
-def solve_image(file: Path) -> bool:
-    solve_exe = get_solve_exe()
-
-    cmd = [solve_exe, str(file)] + OPTS
-    print(" ".join(cmd))
-
-    ret = subprocess.run(cmd)
-    if ret.returncode != 0:
-        logging.error(f"{file}  solve-field failed")
-        return False
-
-    solved_file = file.with_suffix(".solved")
-    return solved_file.is_file()
+"""
+from practical experience, we have seen that solve-field works at least down to 256x256 pixel images
+"""
+X_MIN = 256
+Y_MIN = 256
 
 
 def subimage_dims(x: int, y: int) -> tuple[int, int]:
@@ -71,10 +53,7 @@ def subimage_dims(x: int, y: int) -> tuple[int, int]:
         Subimage height (pixels)
     """
 
-    x_min = 256
-    y_min = 256
-
-    return max(x_min, x // 3), max(y_min, y // 3)
+    return max(X_MIN, x // 3), max(Y_MIN, y // 3)
 
 
 def subimage_centers(
@@ -119,6 +98,12 @@ def subimage_centers(
 def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int) -> None:
     img = iio.imread(file)
     y, x = img.shape[:2]
+    if x < X_MIN or y < Y_MIN:
+        logging.error(
+            f"{file} size {x} x {y} too small:  Minimium image size {X_MIN} x {Y_MIN}"
+        )
+        return
+
     print(f"Processing {file} {x}x{y} pixels")
 
     sx, sy = subimage_dims(x, y)
@@ -137,7 +122,7 @@ def process_image(file: Path, Nx: int, Ny: int, x_margin: int, y_margin: int) ->
             subimage_file = Path(f) / file.name
             iio.imwrite(subimage_file, subimg)
 
-            if solve_image(subimage_file):
+            if ael.plate_scale(subimage_file, args=OPTS):
                 new_dir = file.parent / f"{file.stem}-{center[0]}x{center[1]}/"
                 print(f"{file}  Solved subimage center {center} copy to {new_dir}")
                 shutil.copytree(f, new_dir)
